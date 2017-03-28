@@ -208,6 +208,7 @@ module Network.FTP.Client(-- * Establishing\/Removing connections
                                    -- * File downloads
                                    getlines, getbinary,
                                    downloadbinary, downloadlargebinary,
+                                   withOpenBinary,
                                    -- * File uploads
                                    putlines, putbinary,
                                    uploadbinary,
@@ -223,6 +224,7 @@ module Network.FTP.Client(-- * Establishing\/Removing connections
 where
 import           Control.Exception
 import           Data.ByteString           (hGet, hPut)
+import qualified Data.ByteString.Lazy      as Lazy
 import           Data.String.Utils
 import qualified Network
 import           Network.BSD
@@ -456,6 +458,18 @@ downloadbinary :: FTPConnection -> String -> IO FTPResult
 downloadbinary h fn = do (r0, r1) <- getbinary h fn
                          writeBinaryFile fn r0
                          return r1
+
+withOpenBinary :: FTPConnection -> String -> (Lazy.ByteString -> IO a) -> IO (FTPResult, a)
+withOpenBinary cxn sourcefile callback = do
+  sendcmd cxn "TYPE I"
+  datahandle <- transfercmd cxn ("RETR " ++ sourcefile)
+  datahandle `hSetBinaryMode` True
+
+  contents <- Lazy.hGetContents datahandle
+  callbackResult <- callback contents
+  ftpResult <- getresp cxn
+
+  return (ftpResult, callbackResult)
 
 {- | Similar to downloadbinary, but downloads the file in blocks of 4096 bytes
 so that memory usage is limited when downloading large files.
